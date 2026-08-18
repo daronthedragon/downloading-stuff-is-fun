@@ -73,8 +73,10 @@ Most failures mean the site wants you signed in.
    Chromium 127+ also ties cookie encryption to the browser, so if extraction still fails,
    export a `cookies.txt` with a browser extension instead.
 2. **Run `update.bat`.** Sites change constantly and most breakage is just a stale extractor.
-3. **DRM-protected tracks can't be downloaded.** Paid tiers (e.g. SoundCloud Go+) serve
-   encrypted streams — there is no file to fetch, and that's by design.
+3. **Paid and subscription audio can't be downloaded.** Spotify, Apple Music, Tidal and Amazon
+   Music are encrypted end to end, and paid tiers like SoundCloud Go+ serve an encrypted stream
+   instead of a file. There's nothing there to fetch — that's how they're built, and this tool
+   won't try to get around it.
 
 ## API
 
