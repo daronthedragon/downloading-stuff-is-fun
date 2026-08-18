@@ -196,10 +196,33 @@ def name_from_response(resp: Any, url: str) -> str:
     return name or "download"
 
 
-def direct_fetch(url: str, outdir: Path, jid: str) -> Path:
+# extensions that are plainly a file, not a page with media on it
+PLAIN_EXT = {
+    ".pdf", ".zip", ".rar", ".7z", ".gz", ".tar", ".xz", ".bz2", ".iso", ".dmg",
+    ".exe", ".msi", ".apk", ".deb", ".rpm", ".jar", ".bin",
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".rtf", ".epub", ".mobi",
+    ".txt", ".csv", ".json", ".xml", ".md", ".yml", ".yaml", ".sql", ".log",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico", ".tiff", ".psd",
+    ".ttf", ".otf", ".woff", ".woff2",
+}
+
+
+def is_plain_file(url: str) -> bool:
+    return Path(urllib.parse.urlparse(url).path).suffix.lower() in PLAIN_EXT
+
+
+def direct_fetch(url: str, outdir: Path, jid: str, allow_html: bool = True) -> Path:
     """Plain HTTP download — the catch-all for links yt-dlp has no extractor for."""
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+    req = urllib.request.Request(url, headers={
+        "User-Agent": UA,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
     with urllib.request.urlopen(req, timeout=30) as resp:
+        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if not allow_html and ctype in ("text/html", "application/xhtml+xml"):
+            # a blocked video page — handing over its HTML would be worse than failing
+            raise RuntimeError("no file here, just a web page")
         total = int(resp.headers.get("content-length") or 0)
         if total and total > MAX_SIZE:
             raise RuntimeError(f"file is too big ({total / 1024**3:.1f} GB)")
@@ -387,21 +410,34 @@ def run_job(jid: str, url: str, req: "DownloadRequest") -> None:
 
     try:
         set_job(jid, state="resolving")
-        try:
+        def via_ytdlp() -> None:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
             if info:
                 set_job(jid, title=(info.get("title") or "download"))
-        except Exception as e:  # noqa: BLE001
-            # yt-dlp only knows media sites; anything else that is simply a file
-            # sitting at a URL we can still fetch ourselves
-            msg = str(e).lower()
-            if not any(s in msg for s in ("unsupported url", "no video formats",
-                                          "unable to extract", "not a valid url",
-                                          "no suitable extractor")):
-                raise
+
+        def via_http(allow_html: bool) -> None:
             set_job(jid, state="downloading", title=None)
-            direct_fetch(url, outdir, jid)
+            direct_fetch(url, outdir, jid, allow_html=allow_html)
+
+        # each route covers the other's blind spots: yt-dlp knows media sites but
+        # mangles plain files; a raw fetch gets anything but can't parse a page
+        if is_plain_file(url):
+            try:
+                via_http(allow_html=True)
+            except Exception as e:  # noqa: BLE001
+                try:
+                    via_ytdlp()
+                except Exception:
+                    raise e from None
+        else:
+            try:
+                via_ytdlp()
+            except Exception as e:  # noqa: BLE001
+                try:
+                    via_http(allow_html=False)
+                except Exception:
+                    raise e from None  # the original complaint is the useful one
 
         files = [p for p in outdir.rglob("*") if p.is_file() and not p.name.endswith(".part")]
         # thumbnails are only there to be embedded — don't ship them
