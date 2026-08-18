@@ -397,7 +397,12 @@ def run_job(jid: str, url: str, req: "DownloadRequest") -> None:
     opts.update(build_format(req.mode, req.quality, req.audioFormat, req.videoFormat))
     with_cookies(opts, req.cookiesFrom)
     opts["noplaylist"] = not req.playlist
-    opts["outtmpl"] = str(outdir / "%(title).150B [%(id)s].%(ext)s")
+    # each job has its own directory, so the site's id isn't needed to keep names
+    # unique — a playlist gets numbered instead, which also keeps albums in order
+    opts["outtmpl"] = str(outdir / (
+        "%(playlist_index)02d - %(title).150B.%(ext)s" if req.playlist
+        else "%(title).150B.%(ext)s"
+    ))
     opts["progress_hooks"] = [hook]
     opts["postprocessor_hooks"] = [pp_hook]
     if req.playlist:
