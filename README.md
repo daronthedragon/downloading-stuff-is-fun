@@ -6,6 +6,8 @@ nothing is uploaded, no account, no ads, no watermarks.
 **Live site: [downloadingstuffis.fun](https://downloadingstuffis.fun)** ·
 **Source: [github.com/daronthedragon/downloading-stuff-is-fun](https://github.com/daronthedragon/downloading-stuff-is-fun)**
 
+[![downloading stuff is fun](docs/screenshot.png)](https://downloadingstuffis.fun)
+
 Backed by [yt-dlp](https://github.com/yt-dlp/yt-dlp) (1800+ sites: YouTube, SoundCloud, TikTok,
 Instagram, X, Twitch, Reddit, Vimeo, Bandcamp, …) and ffmpeg.
 
