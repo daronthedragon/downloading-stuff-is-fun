@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "downloading stuff is fun",
+  "version": "1.0.0",
+  "description": "Send the page you're on to your local downloader. Requires the app running on 127.0.0.1:7788.",
+  "permissions": ["activeTab", "contextMenus", "downloads", "notifications"],
+  "host_permissions": ["http://127.0.0.1:7788/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "download this page" }
+}

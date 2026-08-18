@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>downloading stuff is fun</title>
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --panel: #141417;
+    --panel-2: #1c1c21;
+    --line: #2a2a31;
+    --fg: #f2f2f4;
+    --dim: #8b8b96;
+    --accent: #f2f2f4;
+    --accent-fg: #0b0b0d;
+    --err: #ff6b6b;
+    --ok: #6bd88a;
+    --radius: 18px;
+  }
+  [data-theme="light"] {
+    --bg: #f3f3f5; --panel: #fff; --panel-2: #ececf0; --line: #dcdce2;
+    --fg: #16161a; --dim: #6c6c78; --accent: #16161a; --accent-fg: #fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.45 ui-sans-serif, system-ui, "Segoe UI", Inter, Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 640px; margin: auto 0; }
+
+  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
+  h1 span { color: var(--dim); font-weight: 400; }
+  .sub { color: var(--dim); font-size: 13px; margin-left: auto; }
+
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+
+  .input-row { display: flex; gap: 8px; padding: 8px; align-items: center; }
+  input[type=url] {
+    flex: 1; min-width: 0; background: none; border: 0; outline: 0;
+    color: var(--fg); font: inherit; padding: 12px 10px;
+  }
+  input[type=url]::placeholder { color: var(--dim); }
+  button {
+    font: inherit; border: 0; border-radius: 12px; cursor: pointer;
+    background: var(--panel-2); color: var(--fg); padding: 11px 15px;
+    transition: filter .12s ease, opacity .12s ease;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.25); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  .icon { padding: 11px 12px; }
+
+  .tabs { display: flex; gap: 6px; margin: 14px 0 0; }
+  .tabs button {
+    flex: 1; background: var(--panel); border: 1px solid var(--line);
+    color: var(--dim); padding: 10px; border-radius: 12px; font-size: 14px;
+  }
+  .tabs button[aria-pressed=true] { background: var(--panel-2); color: var(--fg); border-color: var(--dim); }
+
+  details.settings { margin-top: 12px; }
+  details.settings > summary {
+    cursor: pointer; color: var(--dim); font-size: 13px; padding: 6px 4px;
+    list-style: none; user-select: none;
+  }
+  details.settings > summary::-webkit-details-marker { display: none; }
+  details.settings > summary::before { content: "⚙ "; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+  .grid label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--dim); }
+  select {
+    font: inherit; font-size: 14px; background: var(--panel-2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; outline: 0;
+  }
+  .checks { grid-column: 1 / -1; display: flex; gap: 18px; flex-wrap: wrap; color: var(--dim); font-size: 13px; }
+  .checks label { flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
+  input[type=checkbox] { accent-color: var(--fg); width: 15px; height: 15px; }
+
+  .card { margin-top: 14px; padding: 14px; display: flex; gap: 14px; align-items: center; }
+  .card img { width: 92px; height: 62px; object-fit: cover; border-radius: 10px; background: var(--panel-2); flex: none; }
+  .card .meta { min-width: 0; flex: 1; }
+  .card .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .d { color: var(--dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .bar { height: 6px; background: var(--panel-2); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--fg); transition: width .25s ease; }
+  .bar.indeterminate i { width: 35%; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+  .msg { margin-top: 14px; padding: 13px 15px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; }
+  .msg.err { background: color-mix(in srgb, var(--err) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--err) 35%, var(--line)); color: var(--err); }
+  .msg.ok { background: var(--panel); border: 1px solid var(--line); }
+
+  .cta { margin-top: 14px; padding: 16px 18px; }
+  .cta-t { font-weight: 600; margin-bottom: 6px; }
+  .cta-d { color: var(--dim); font-size: 13.5px; line-height: 1.55; }
+  .cta-row { display: flex; gap: 10px; align-items: center; margin-top: 13px; flex-wrap: wrap; }
+  .btn-dl {
+    display: inline-block; background: var(--accent); color: var(--accent-fg);
+    font-weight: 600; text-decoration: none; padding: 11px 16px; border-radius: 12px;
+  }
+  .btn-dl:hover { filter: brightness(1.15); }
+  .cta-row button { font-size: 13.5px; }
+
+  .guide { margin-top: 10px; }
+  .guide-body { padding: 6px 18px 16px; color: var(--dim); font-size: 13.5px; line-height: 1.6; }
+  .guide-body ol { padding-left: 20px; margin: 10px 0; }
+  .guide-body li { margin-bottom: 7px; }
+  .guide-body b { color: var(--fg); font-weight: 600; }
+  .guide-body p { margin: 10px 0 0; }
+  .guide-body .note { padding-top: 10px; border-top: 1px solid var(--line); }
+  .guide-body a { color: var(--fg); }
+
+  footer { margin-top: 26px; color: var(--dim); font-size: 12px; text-align: center; line-height: 1.7; }
+  footer a { color: var(--dim); }
+  .hidden { display: none !important; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } .sub { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span>downloading stuff is</span> fun</h1>
+    <div class="sub">paste a link. get the file.</div>
+  </header>
+
+  <form class="box" id="form" autocomplete="off">
+    <div class="input-row">
+      <input type="url" id="url" placeholder="paste a youtube / soundcloud / anything link" spellcheck="false" required>
+      <button type="button" class="icon" id="paste" title="paste from clipboard">📋</button>
+      <button type="submit" class="primary" id="go">download</button>
+    </div>
+  </form>
+
+  <div class="tabs" role="group" aria-label="mode">
+    <button type="button" data-mode="auto" aria-pressed="true">auto</button>
+    <button type="button" data-mode="audio" aria-pressed="false">audio</button>
+    <button type="button" data-mode="mute" aria-pressed="false">mute</button>
+  </div>
+
+  <details class="settings">
+    <summary>settings</summary>
+    <div class="box grid">
+      <label>video quality
+        <select id="quality">
+          <option value="max">best available</option>
+          <option value="2160">4k · 2160p</option>
+          <option value="1440">1440p</option>
+          <option value="1080" selected>1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select>
+      </label>
+      <label>audio format
+        <select id="audioFormat">
+          <option value="mp3" selected>mp3</option>
+          <option value="opus">opus</option>
+          <option value="m4a">m4a</option>
+          <option value="flac">flac</option>
+          <option value="wav">wav</option>
+          <option value="best">original (no re-encode)</option>
+        </select>
+      </label>
+      <label>video container
+        <select id="videoFormat">
+          <option value="auto" selected>auto (mp4)</option>
+          <option value="mkv">mkv</option>
+          <option value="webm">webm</option>
+        </select>
+      </label>
+      <label>cookies from browser
+        <select id="cookiesFrom" title="reuse your logins for age-gated or private media">
+          <option value="none" selected>none</option>
+          <option value="chrome">chrome</option>
+          <option value="edge">edge</option>
+          <option value="firefox">firefox</option>
+          <option value="brave">brave</option>
+          <option value="opera">opera</option>
+          <option value="vivaldi">vivaldi</option>
+        </select>
+      </label>
+      <div class="checks">
+        <label><input type="checkbox" id="playlist"> whole playlist / album (zipped)</label>
+        <label><input type="checkbox" id="subtitles"> subtitles</label>
+        <label><input type="checkbox" id="theme"> light theme</label>
+      </div>
+    </div>
+  </details>
+
+  <div class="box card hidden" id="card">
+    <img id="thumb" alt="">
+    <div class="meta">
+      <div class="t" id="ctitle"></div>
+      <div class="d" id="cdesc"></div>
+      <div class="bar hidden" id="bar"><i></i></div>
+    </div>
+    <button type="button" class="icon hidden" id="cancel" title="cancel">✕</button>
+  </div>
+
+  <div class="msg hidden" id="msg"></div>
+
+  <div class="box cta hidden" id="cta">
+    <div class="cta-t">youtube doesn't allow this from a server</div>
+    <div class="cta-d">
+      google requires a signed-in account for downloads coming from datacenters, so this site
+      can't fetch youtube links. the desktop app runs on your own machine, where youtube works
+      normally — same tool, no limits, nothing sent anywhere.
+    </div>
+    <div class="cta-row">
+      <a class="btn-dl" href="/downloading-stuff-is-fun.zip" download>get the app · windows</a>
+      <button type="button" id="anyway">try it here anyway</button>
+    </div>
+  </div>
+
+  <details class="settings guide">
+    <summary>how to use this</summary>
+    <div class="box guide-body">
+      <ol>
+        <li><b>paste a link</b> — any page with a video or track on it.</li>
+        <li><b>pick a mode</b> — <b>auto</b> gives video + audio, <b>audio</b> gives a tagged mp3
+          with cover art, <b>mute</b> gives video with no sound.</li>
+        <li><b>hit download</b> — you'll see live progress, then the file saves to your device.</li>
+      </ol>
+      <p>open <b>settings</b> for quality, file format, subtitles, and whole playlists or albums
+        (those arrive as a zip). your choices are remembered on this device.</p>
+      <p class="note"><b>works here:</b> soundcloud, vimeo, reddit, x, twitch, bandcamp, direct
+        links, and ~1800 more. <b>youtube doesn't:</b> it blocks downloads coming from servers, so
+        grab the <a href="/downloading-stuff-is-fun.zip" download>desktop app</a> — it runs on your
+        own machine, where youtube works normally.</p>
+      <p class="note"><b>a track won't download?</b> it's usually paid or private — those are
+        encrypted at the source and can't be fetched. most other things just work.</p>
+    </div>
+  </details>
+
+  <footer>
+    no ads · no signup · nothing stored — files are deleted the moment you download them<br>
+    <a href="/downloading-stuff-is-fun.zip" download>get the desktop app</a> ·
+    <a href="https://github.com/daronthedragon/downloading-stuff-is-fun" target="_blank" rel="noreferrer" id="gh">source on github</a> ·
+    <a href="https://github.com/daronthedragon/downloading-stuff-is-fun/issues" target="_blank" rel="noreferrer">report a problem</a><br>
+    open source · powered by <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noreferrer">yt-dlp</a> + ffmpeg<br>
+    only download what you have the right to download.
+  </footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { mode: 'auto', job: null, timer: null, busy: false };
+
+// mode tabs
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  state.mode = b.dataset.mode;
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+
+// theme + settings persistence
+const saved = JSON.parse(localStorage.getItem('ineedit') || '{}');
+['quality','audioFormat','videoFormat','cookiesFrom'].forEach(k => { if (saved[k]) $(k).value = saved[k]; });
+['playlist','subtitles','theme'].forEach(k => { if (saved[k]) $(k).checked = saved[k]; });
+const applyTheme = () => document.documentElement.dataset.theme = $('theme').checked ? 'light' : 'dark';
+const save = () => {
+  const o = {};
+  ['quality','audioFormat','videoFormat','cookiesFrom'].forEach(k => o[k] = $(k).value);
+  ['playlist','subtitles','theme'].forEach(k => o[k] = $(k).checked);
+  localStorage.setItem('ineedit', JSON.stringify(o));
+};
+document.querySelectorAll('select, input[type=checkbox]').forEach(el => el.onchange = () => { save(); applyTheme(); });
+applyTheme();
+
+$('paste').onclick = async () => {
+  try { $('url').value = (await navigator.clipboard.readText()).trim(); $('url').focus(); }
+  catch { $('url').focus(); }
+};
+
+function show(kind, text) {
+  const m = $('msg');
+  m.className = 'msg ' + kind;
+  m.textContent = text;
+}
+function hideMsg() { $('msg').className = 'msg hidden'; }
+
+// youtube refuses datacenter IPs, so point people at the local app instead of
+// making them wait for a failure we can already predict
+const isYouTube = u => {
+  try {
+    const h = new URL(/^https?:\/\//i.test(u) ? u : 'https://' + u).hostname.toLowerCase();
+    return /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|music\.youtube\.com)$/.test(h);
+  } catch { return false; }
+};
+// only relevant on the public site — a local copy has no such limits
+const isHosted = !/^(localhost|127\.|0\.0\.0\.0|\[?::1)/.test(location.hostname || '');
+const showCta = () => { if (isHosted) $('cta').classList.remove('hidden'); };
+$('anyway').onclick = () => { $('cta').classList.add('hidden'); state.force = true; $('form').requestSubmit(); };
+
+function fmtSize(b) {
+  if (!b) return '';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return b.toFixed(b < 10 && i ? 1 : 0) + ' ' + u[i];
+}
+function fmtTime(s) {
+  if (s == null) return '';
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+}
+
+async function api(path, body, method) {
+  const r = await fetch(path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+
+function settings() {
+  return {
+    mode: state.mode,
+    quality: $('quality').value,
+    audioFormat: $('audioFormat').value,
+    videoFormat: $('videoFormat').value,
+    playlist: $('playlist').checked,
+    subtitles: $('subtitles').checked,
+    cookiesFrom: $('cookiesFrom').value,
+  };
+}
+
+function setBusy(on) {
+  state.busy = on;
+  $('go').disabled = on;
+  $('go').textContent = on ? 'working…' : 'download';
+  $('cancel').classList.toggle('hidden', !on);
+  $('bar').classList.toggle('hidden', !on);
+}
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  if (state.busy) return;
+  const url = $('url').value.trim();
+  if (!url) return;
+
+  if (isHosted && isYouTube(url) && !state.force) { hideMsg(); showCta(); return; }
+  state.force = false;
+
+  hideMsg();
+  $('cta').classList.add('hidden');
+  setBusy(true);
+  $('card').classList.remove('hidden');
+  $('thumb').removeAttribute('src');
+  $('ctitle').textContent = 'reading link…';
+  $('cdesc').textContent = url.replace(/^https?:\/\//, '').slice(0, 70);
+  $('bar').classList.add('indeterminate');
+  $('bar').querySelector('i').style.width = '';
+
+  // metadata first, so there's something to look at while it works
+  api('/api/info', { url, cookiesFrom: $('cookiesFrom').value }).then(info => {
+    if (!state.busy) return;
+    if (info.thumbnail) $('thumb').src = info.thumbnail;
+    $('ctitle').textContent = info.title;
+    const bits = [info.uploader, fmtTime(info.duration), info.extractor];
+    if (info.is_playlist) bits.push(info.playlist_count + ' items');
+    $('cdesc').textContent = bits.filter(Boolean).join(' · ');
+  }).catch(() => {});
+
+  try {
+    const { id } = await api('/api/download', { url, ...settings() });
+    state.job = id;
+    poll();
+  } catch (err) {
+    setBusy(false);
+    show('err', err.message);
+  }
+};
+
+$('cancel').onclick = async () => {
+  clearTimeout(state.timer);
+  if (state.job) api('/api/job/' + state.job, null, 'DELETE').catch(() => {});
+  state.job = null;
+  setBusy(false);
+  $('card').classList.add('hidden');
+};
+
+function poll() {
+  if (!state.job) return;
+  api('/api/job/' + state.job).then(j => {
+    if (!state.job) return;
+    render(j);
+    if (j.state === 'done') finish(j);
+    else if (j.state === 'error') {
+      setBusy(false); state.job = null; show('err', j.error);
+      if (/refusing anonymous|sign in|not a bot/i.test(j.error || '')) showCta();
+    }
+    else state.timer = setTimeout(poll, 500);
+  }).catch(err => { setBusy(false); state.job = null; show('err', err.message); });
+}
+
+function render(j) {
+  if (j.title) $('ctitle').textContent = j.title;
+  const bar = $('bar'), fill = bar.querySelector('i');
+  const labels = { queued: 'queued', resolving: 'resolving…', downloading: 'downloading', processing: 'converting…' };
+  if (j.progress != null && j.state === 'downloading') {
+    bar.classList.remove('indeterminate');
+    fill.style.width = j.progress + '%';
+    const parts = [j.progress.toFixed(1) + '%'];
+    if (j.total) parts.push(fmtSize(j.downloaded) + ' / ' + fmtSize(j.total));
+    if (j.speed) parts.push(fmtSize(j.speed) + '/s');
+    if (j.eta) parts.push(fmtTime(j.eta) + ' left');
+    $('cdesc').textContent = parts.join(' · ');
+  } else {
+    bar.classList.add('indeterminate');
+    $('cdesc').textContent = labels[j.state] || j.state;
+  }
+}
+
+function finish(j) {
+  const id = state.job;
+  state.job = null;
+  setBusy(false);
+  $('bar').classList.add('hidden');
+  $('cdesc').textContent = [j.filename, fmtSize(j.size)].filter(Boolean).join(' · ');
+  show('ok', 'saving ' + j.filename + '…');
+  // hand the file to the browser's own downloader
+  const a = document.createElement('a');
+  a.href = '/api/file/' + id;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => show('ok', 'done · ' + j.filename), 1200);
+}
+
+$('url').focus();
+</script>
+</body>
+</html>
