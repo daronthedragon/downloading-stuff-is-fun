@@ -210,11 +210,12 @@
     <div class="cta-t">youtube doesn't allow this from a server</div>
     <div class="cta-d">
       google requires a signed-in account for downloads coming from datacenters, so this site
-      can't fetch youtube links. the desktop app runs on your own machine, where youtube works
-      normally — same tool, no limits, nothing sent anywhere.
+      can't fetch youtube links. the whole thing is open source — run it on your own machine and
+      youtube works normally, using your own connection.
     </div>
     <div class="cta-row">
-      <a class="btn-dl" href="/downloading-stuff-is-fun.zip" download>get the app · windows</a>
+      <a class="btn-dl" href="https://github.com/daronthedragon/downloading-stuff-is-fun"
+         target="_blank" rel="noreferrer">get it on github</a>
       <button type="button" id="anyway">try it here anyway</button>
     </div>
   </div>
@@ -232,8 +233,9 @@
         (those arrive as a zip). your choices are remembered on this device.</p>
       <p class="note"><b>works here:</b> soundcloud, vimeo, reddit, x, twitch, bandcamp, direct
         links, and ~1800 more. <b>youtube doesn't:</b> it blocks downloads coming from servers, so
-        grab the <a href="/downloading-stuff-is-fun.zip" download>desktop app</a> — it runs on your
-        own machine, where youtube works normally.</p>
+        run it yourself from <a href="https://github.com/daronthedragon/downloading-stuff-is-fun" target="_blank" rel="noreferrer">github</a> — on your
+        own machine youtube works normally.</p>
+      <p class="note"><b>everything is virus scanned.</b> every file is checked with clamav before it reaches you — anything infected is deleted and never served.</p>
       <p class="note"><b>a track won't download?</b> it's usually paid or private — those are
         encrypted at the source and can't be fetched. most other things just work.</p>
     </div>
@@ -241,7 +243,6 @@
 
   <footer>
     no ads · no signup · nothing stored — files are deleted the moment you download them<br>
-    <a href="/downloading-stuff-is-fun.zip" download>get the desktop app</a> ·
     <a href="https://github.com/daronthedragon/downloading-stuff-is-fun" target="_blank" rel="noreferrer" id="gh">source on github</a> ·
     <a href="https://github.com/daronthedragon/downloading-stuff-is-fun/issues" target="_blank" rel="noreferrer">report a problem</a><br>
     open source · powered by <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noreferrer">yt-dlp</a> + ffmpeg<br>
@@ -427,7 +428,8 @@ function finish(j) {
   setBusy(false);
   $('bar').classList.add('hidden');
   $('cdesc').textContent = [j.filename, fmtSize(j.size)].filter(Boolean).join(' · ');
-  show('ok', 'saving ' + j.filename + '…');
+  const scanned = j.scan === 'clean' ? ' · ✓ virus scanned' : '';
+  show('ok', 'saving ' + j.filename + '…' + scanned);
   // hand the file to the browser's own downloader
   const a = document.createElement('a');
   a.href = '/api/file/' + id;
@@ -435,7 +437,7 @@ function finish(j) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => show('ok', 'done · ' + j.filename), 1200);
+  setTimeout(() => show('ok', 'done · ' + j.filename + scanned), 1200);
 }
 
 $('url').focus();

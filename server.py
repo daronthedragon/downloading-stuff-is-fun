@@ -6,12 +6,18 @@ Bind to localhost only unless you know what you're doing (see README).
 
 from __future__ import annotations
 
+import ipaddress
+import mimetypes
 import os
 import re
 import shutil
+import socket
+import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
+import urllib.request
 import uuid
 import zipfile
 from pathlib import Path
@@ -35,6 +41,17 @@ JOB_TTL = int(os.environ.get("INEEDIT_JOB_TTL", "3600"))
 # concurrency leash (matters when the instance is public)
 MAX_JOBS = int(os.environ.get("INEEDIT_MAX_JOBS", "4"))
 MAX_PER_IP = int(os.environ.get("INEEDIT_MAX_PER_IP", "1"))
+# biggest single file we'll fetch, in GB
+MAX_SIZE = float(os.environ.get("INEEDIT_MAX_SIZE_GB", "4")) * 1024**3
+# virus scanning: "auto" scans when a scanner exists, "required" refuses to
+# serve anything unscanned, "off" skips it
+SCAN_MODE = os.environ.get("INEEDIT_SCAN", "auto").lower()
+# private/LAN addresses are refused by default — on a public instance letting
+# people fetch 127.0.0.1 or 169.254.169.254 would hand them the server's guts
+ALLOW_PRIVATE = os.environ.get("INEEDIT_ALLOW_PRIVATE", "").lower() in ("1", "true", "yes")
+
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
 
 app = FastAPI(title="downloading stuff is fun")
 
@@ -140,6 +157,173 @@ def summarize(info: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# -------------------------------------------------------- reach anything safely
+
+def host_is_public(url: str) -> bool:
+    """False for LAN/loopback/cloud-metadata addresses (SSRF guard)."""
+    if ALLOW_PRIVATE:
+        return True
+    host = urllib.parse.urlparse(url).hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return True  # can't resolve — let the downloader report the real error
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
+def name_from_response(resp: Any, url: str) -> str:
+    """Best filename we can work out from headers, falling back to the URL."""
+    disp = resp.headers.get("content-disposition", "")
+    m = re.search(r"filename\*=UTF-8''([^;]+)", disp, re.I) or \
+        re.search(r'filename="?([^";]+)"?', disp, re.I)
+    if m:
+        return sanitize(urllib.parse.unquote(m.group(1)))
+
+    name = sanitize(urllib.parse.unquote(Path(urllib.parse.urlparse(url).path).name))
+    ctype = (resp.headers.get("content-type") or "").split(";")[0].strip()
+    if not Path(name).suffix and ctype:
+        name = (name or "download") + (mimetypes.guess_extension(ctype) or "")
+    return name or "download"
+
+
+def direct_fetch(url: str, outdir: Path, jid: str) -> Path:
+    """Plain HTTP download — the catch-all for links yt-dlp has no extractor for."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        total = int(resp.headers.get("content-length") or 0)
+        if total and total > MAX_SIZE:
+            raise RuntimeError(f"file is too big ({total / 1024**3:.1f} GB)")
+
+        path = outdir / name_from_response(resp, url)
+        done = 0
+        started = time.time()
+        set_job(jid, state="downloading", filename=path.name, total=total or None)
+
+        with open(path, "wb") as f:
+            while chunk := resp.read(256 * 1024):
+                f.write(chunk)
+                done += len(chunk)
+                if done > MAX_SIZE:
+                    f.close()
+                    path.unlink(missing_ok=True)
+                    raise RuntimeError("file is too big")
+                elapsed = max(time.time() - started, 0.001)
+                set_job(
+                    jid,
+                    state="downloading",
+                    downloaded=done,
+                    total=total or None,
+                    progress=round(done / total * 100, 1) if total else None,
+                    speed=done / elapsed,
+                    eta=int((total - done) / (done / elapsed)) if total and done else None,
+                )
+    return path
+
+
+# file signatures, longest first so more specific ones win
+MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"%PDF", ".pdf"), (b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"),
+    (b"GIF87a", ".gif"), (b"GIF89a", ".gif"), (b"PK\x03\x04", ".zip"),
+    (b"Rar!\x1a\x07", ".rar"), (b"7z\xbc\xaf\x27\x1c", ".7z"), (b"\x1f\x8b", ".gz"),
+    (b"ID3", ".mp3"), (b"OggS", ".ogg"), (b"fLaC", ".flac"), (b"RIFF", ".wav"),
+    (b"\x1aE\xdf\xa3", ".mkv"), (b"MZ", ".exe"), (b"\x7fELF", ".elf"),
+    (b"{\\rtf", ".rtf"), (b"\xfd7zXZ", ".xz"), (b"BZh", ".bz2"),
+)
+# extensions yt-dlp invents when it can't tell what something is
+BOGUS_EXT = {".unknown_video", ".bin", ".part", ".none", ""}
+
+
+def sniff_extension(path: Path) -> str | None:
+    """Work out what a file actually is from its first bytes."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(64)
+    except OSError:
+        return None
+    for sig, ext in MAGIC:
+        if head.startswith(sig):
+            if ext == ".wav" and head[8:12] == b"WEBP":
+                return ".webp"
+            return ext
+    if head[4:8] == b"ftyp":
+        return ".m4a" if head[8:12] in (b"M4A ", b"M4B ") else ".mp4"
+    if head.lstrip()[:1] in (b"<", b"{", b"["):
+        return None  # html/json — leave whatever name it came with
+    return None
+
+
+def tidy_name(path: Path) -> Path:
+    """Repair yt-dlp's placeholder extensions and 'name [name]' duplication."""
+    stem, ext = path.stem, path.suffix.lower()
+
+    if ext in BOGUS_EXT:
+        real = sniff_extension(path)
+        if real:
+            ext = real
+
+    # "%(title)s [%(id)s]" collapses to "dummy [dummy]" when both are the same
+    m = re.match(r"^(.*?) \[([^\]]+)\]$", stem)
+    if m and m.group(1).strip().lower() == m.group(2).strip().lower():
+        stem = m.group(1).strip()
+
+    target = path.with_name(sanitize(stem) + ext)
+    if target != path and not target.exists():
+        try:
+            path.rename(target)
+            return target
+        except OSError:
+            pass
+    return path
+
+
+# ---------------------------------------------------------------- virus scanner
+
+def scanner() -> str | None:
+    """Which on-disk scanner we can use, if any."""
+    if SCAN_MODE == "off":
+        return None
+    return shutil.which("clamdscan") or shutil.which("clamscan")
+
+
+def scan_file(path: Path) -> tuple[str, str]:
+    """Returns (verdict, detail): clean | infected | skipped."""
+    tool = scanner()
+    if not tool:
+        if SCAN_MODE == "required":
+            raise RuntimeError("virus scanning is required but no scanner is installed")
+        return "skipped", ""
+
+    cmd = [tool, "--no-summary"]
+    if tool.endswith("clamdscan"):
+        cmd.append("--fdpass")  # let the daemon read a file it doesn't own
+    cmd.append(str(path))
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        if SCAN_MODE == "required":
+            raise RuntimeError(f"virus scan failed: {e}") from e
+        return "skipped", str(e)
+
+    if p.returncode == 0:
+        return "clean", ""
+    if p.returncode == 1:
+        found = re.search(r":\s*(.+?)\s+FOUND", p.stdout or "")
+        return "infected", found.group(1) if found else "malware"
+    if SCAN_MODE == "required":
+        raise RuntimeError(f"virus scan failed: {(p.stderr or p.stdout or '').strip()[:200]}")
+    return "skipped", (p.stderr or "").strip()[:200]
+
+
 # ------------------------------------------------------------------- job loop
 
 def janitor() -> None:
@@ -203,10 +387,21 @@ def run_job(jid: str, url: str, req: "DownloadRequest") -> None:
 
     try:
         set_job(jid, state="resolving")
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-        if info:
-            set_job(jid, title=(info.get("title") or "download"))
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+            if info:
+                set_job(jid, title=(info.get("title") or "download"))
+        except Exception as e:  # noqa: BLE001
+            # yt-dlp only knows media sites; anything else that is simply a file
+            # sitting at a URL we can still fetch ourselves
+            msg = str(e).lower()
+            if not any(s in msg for s in ("unsupported url", "no video formats",
+                                          "unable to extract", "not a valid url",
+                                          "no suitable extractor")):
+                raise
+            set_job(jid, state="downloading", title=None)
+            direct_fetch(url, outdir, jid)
 
         files = [p for p in outdir.rglob("*") if p.is_file() and not p.name.endswith(".part")]
         # thumbnails are only there to be embedded — don't ship them
@@ -223,6 +418,15 @@ def run_job(jid: str, url: str, req: "DownloadRequest") -> None:
         else:
             final = keep[0]
 
+        final = tidy_name(final)
+
+        # never hand over a file we haven't looked at
+        set_job(jid, state="scanning", progress=100.0)
+        verdict, detail = scan_file(final)
+        if verdict == "infected":
+            shutil.rmtree(outdir, ignore_errors=True)
+            raise RuntimeError(f"that file is infected ({detail}) — it was deleted, not served")
+
         set_job(
             jid,
             state="done",
@@ -231,6 +435,7 @@ def run_job(jid: str, url: str, req: "DownloadRequest") -> None:
             filename=final.name,
             size=final.stat().st_size,
             count=len(keep),
+            scan=verdict,
         )
     except Exception as e:  # noqa: BLE001 — surface whatever yt-dlp says
         set_job(jid, state="error", error=clean_error(str(e)))
@@ -302,6 +507,8 @@ def check_url(url: str) -> str:
         url = "https://" + url
     if not re.match(r"^https?://[^\s/]+\.[^\s/]+", url, re.I):
         raise HTTPException(400, "that doesn't look like a link")
+    if not host_is_public(url):
+        raise HTTPException(400, "that address is on a private network")
     return url
 
 
@@ -395,7 +602,14 @@ def api_health() -> dict[str, Any]:
         pot = True
     except Exception:  # noqa: BLE001
         pot = False
-    return {"ytdlp": yt_dlp.version.__version__, "potProvider": pot, "jobs": len(jobs)}
+    tool = scanner()
+    return {
+        "ytdlp": yt_dlp.version.__version__,
+        "potProvider": pot,
+        "jobs": len(jobs),
+        "scanner": Path(tool).stem if tool else None,
+        "scanMode": SCAN_MODE,
+    }
 
 
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

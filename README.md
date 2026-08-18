@@ -9,11 +9,20 @@ nothing is uploaded, no account, no ads, no watermarks.
 Backed by [yt-dlp](https://github.com/yt-dlp/yt-dlp) (1800+ sites: YouTube, SoundCloud, TikTok,
 Instagram, X, Twitch, Reddit, Vimeo, Bandcamp, …) and ffmpeg.
 
-## Site or app?
+**If a link has a file behind it, this will get it.** Media sites go through yt-dlp; anything
+else — a PDF, a zip, an image, any direct link — falls through to a plain fetch, with the real
+file type detected from its contents so it lands with a name that opens.
 
-|  | Site | App |
+**Every file is virus scanned** with ClamAV before it's handed over. Anything infected is
+deleted and never served.
+
+## Site, or run it yourself?
+
+|  | Site | Local |
 | --- | --- | --- |
 | Works on phones | ✅ | ❌ |
+| Any file behind a link (pdf, zip, image…) | ✅ | ✅ |
+| Virus scanned | ✅ | if ClamAV installed |
 | Nothing to install | ✅ | ❌ |
 | SoundCloud, Vimeo, Reddit, X, direct links | ✅ | ✅ |
 | **YouTube** | ❌ blocked | ✅ works |
@@ -22,10 +31,16 @@ Instagram, X, Twitch, Reddit, Vimeo, Bandcamp, …) and ffmpeg.
 YouTube refuses downloads coming from servers, so the site can't do it — but the app runs from
 your own connection, where it works normally. Everything else works either way.
 
-## Run the app
+## Run it yourself
 
-Download the [latest release](https://github.com/daronthedragon/downloading-stuff-is-fun/releases),
-unzip it, and run:
+The site can't fetch YouTube (Google blocks servers), but your own machine can. Clone it:
+
+```bash
+git clone https://github.com/daronthedragon/downloading-stuff-is-fun.git
+cd downloading-stuff-is-fun
+```
+
+then run:
 
 ```bash
 start.bat
@@ -72,7 +87,7 @@ The frontend is just a client of these — script against them if you like.
 | `GET /api/job/{id}` | state, percent, bytes, speed, eta |
 | `GET /api/file/{id}` | the finished file (deleted from disk once sent) |
 | `DELETE /api/job/{id}` | forget a job and its files |
-| `GET /api/health` | yt-dlp version, PO helper status |
+| `GET /api/health` | yt-dlp version, scanner status, PO helper status |
 
 Files land in a temp dir and are removed the moment you download them; leftovers are swept
 after an hour.
@@ -87,6 +102,9 @@ after an hour.
 | `INEEDIT_JOB_TTL` | `3600` seconds |
 | `INEEDIT_MAX_JOBS` | `4` concurrent jobs |
 | `INEEDIT_MAX_PER_IP` | `1` job per visitor |
+| `INEEDIT_MAX_SIZE_GB` | `4` — biggest single file |
+| `INEEDIT_SCAN` | `auto` (`required` refuses unscanned files, `off` disables) |
+| `INEEDIT_ALLOW_PRIVATE` | unset — LAN/loopback URLs are refused (SSRF guard) |
 
 **Keep it on localhost.** There's no authentication — anyone who can reach the port can make
 your machine fetch arbitrary URLs. To expose it, put a reverse proxy with auth in front.
