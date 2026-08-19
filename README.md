@@ -80,6 +80,21 @@ Most failures mean the site wants you signed in.
    instead of a file. There's nothing there to fetch — that's how they're built, and this tool
    won't try to get around it.
 
+## Browser extension
+
+`extension/` is a companion for a local instance: click the toolbar button on any page and it
+hands that tab's URL to the app running on `127.0.0.1:7788`. The badge shows progress and the
+file lands in your Downloads folder. Right-click gives you video or audio-only.
+
+It contains no downloading logic of its own — it's a remote control for the app.
+
+Load it in Chrome or Edge: `chrome://extensions` → enable **Developer mode** → **Load unpacked**
+→ pick the `extension` folder. The app has to be running.
+
+Note the server only accepts cross-origin calls from `chrome-extension://` and `moz-extension://`
+origins, never from ordinary web pages — otherwise any site you visited could drive your
+downloader.
+
 ## API
 
 The frontend is just a client of these — script against them if you like.
